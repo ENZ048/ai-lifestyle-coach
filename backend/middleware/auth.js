@@ -32,6 +32,7 @@ async function authenticate(req, res, next) {
     next();
   } catch (err) {
     const status = err?.errorInfo?.code === 'auth/id-token-expired' ? 401 : 401;
+    req?.log?.('auth failed', err?.message || err);
     return res.status(status).json({ error: 'Unauthorized' });
   }
 }
@@ -46,6 +47,7 @@ async function optionalAuth(req, res, next) {
     req.user = user;
     return next();
   } catch (err) {
+    req?.log?.('optionalAuth: token invalid or missing');
     return next();
   }
 }
