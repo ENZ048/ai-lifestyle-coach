@@ -1,108 +1,83 @@
--- DESTRUCTIVE MIGRATION: Drops selected tables and recreates schema from scratch
--- Run only if you are 100% sure you want to wipe existing data for these tables.
+-- 1) Profiles: add columns for onboarding + flexible storage
+ALTER TABLE public.profiles
+  ADD COLUMN onboarding_complete BOOLEAN DEFAULT FALSE,
+  ADD COLUMN preferred_coach_tone VARCHAR(20) CHECK (preferred_coach_tone IN ('supportive','strict','neutral')) DEFAULT 'supportive',
+  ADD COLUMN training_experience VARCHAR(20) CHECK (training_experience IN ('none','some','regular')) DEFAULT 'some',
+  ADD COLUMN contact_email TEXT,
+  ADD COLUMN consent_profile JSONB,            -- { consent_given: true, consent_date: timestamptz, terms_version: 'v1' }
+  ADD COLUMN additional_profile JSONB;        -- freeform parsed fields (measurements, schedule slots, photos refs)
 
-DROP TABLE IF EXISTS public.events CASCADE;
-DROP TABLE IF EXISTS public.plans CASCADE;
-DROP TABLE IF EXISTS public.user_summaries CASCADE;
-DROP TABLE IF EXISTS public.memories CASCADE;
-DROP TABLE IF EXISTS public.daily_logs CASCADE;
-DROP TABLE IF EXISTS public.profiles CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
+-- 2) Safety additions to profiles
+ALTER TABLE public.profiles
+  ADD COLUMN injury_severity SMALLINT,        -- e.g., 0 = none, 1 = mild, 2 = moderate, 3 = severe
+  ADD COLUMN safety_review_required BOOLEAN DEFAULT FALSE,
+  ADD COLUMN medications TEXT;
 
--- Ensure pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
+-- 3) Plans: metadata for review & reproducibility
+ALTER TABLE public.plans
+  ADD COLUMN status VARCHAR(20) CHECK (status IN ('draft','active','archived')) DEFAULT 'active',
+  ADD COLUMN summary_text TEXT,
+  ADD COLUMN trigger_reason VARCHAR(30) DEFAULT 'auto', -- 'auto' | 'manual' | 'user'
+  ADD COLUMN required_fields_snapshot JSONB,  -- snapshot of canonical fields used for generation
+  ADD COLUMN safety_analysis JSONB,           -- safety analysis results from plan generation
+  ADD COLUMN guardrails_applied JSONB,        -- list of guardrails that were applied
+  ADD COLUMN safety_review_completed BOOLEAN DEFAULT FALSE,
+  ADD COLUMN safety_review_approved BOOLEAN,
+  ADD COLUMN safety_reviewer_id UUID REFERENCES public.users(id),
+  ADD COLUMN safety_review_notes TEXT,
+  ADD COLUMN safety_review_date TIMESTAMPTZ,
+  ADD COLUMN safety_modifications JSONB;
 
--- Users table (Firebase Phone Auth)
-CREATE TABLE public.users (
+-- 4) Onboarding sessions table (tracks a whole conversation/session)
+CREATE TABLE IF NOT EXISTS public.onboarding_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firebase_uid TEXT UNIQUE NOT NULL,
-  phone_number TEXT UNIQUE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  last_active TIMESTAMPTZ,
-  timezone VARCHAR(50),
-  is_active BOOLEAN DEFAULT TRUE
-);
-
--- Profiles table (onboarding data)
-CREATE TABLE public.profiles (
-  user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
-  name VARCHAR(100) NOT NULL,
-  date_of_birth DATE NOT NULL,
-  sex VARCHAR(10) CHECK (sex IN ('male', 'female', 'other')),
-  weight_kg DECIMAL(5,2) NOT NULL,
-  height_cm INTEGER,
-  primary_goal VARCHAR(20) CHECK (primary_goal IN ('lose_fat', 'gain_muscle', 'recomposition', 'general_fitness')),
-  target_weight_kg DECIMAL(5,2),
-  activity_level VARCHAR(20) CHECK (activity_level IN ('sedentary', 'lightly_active', 'moderately_active', 'very_active')),
-  time_availability VARCHAR(15) CHECK (time_availability IN ('morning', 'evening', 'flexible')),
-  diet_preference VARCHAR(15) CHECK (diet_preference IN ('veg', 'nonveg', 'vegan', 'keto', 'pescatarian', 'other')),
-  allergies TEXT,
-  meal_frequency VARCHAR(10) CHECK (meal_frequency IN ('3', '5', 'flexible')),
-  workout_setup VARCHAR(15) CHECK (workout_setup IN ('home', 'gym', 'mixed')),
-  injury VARCHAR(3) CHECK (injury IN ('yes', 'no')),
-  injury_notes TEXT,
-  sleep_hours DECIMAL(3,1),
-  medical_conditions TEXT,
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Daily logs
-CREATE TABLE public.daily_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID UNIQUE DEFAULT gen_random_uuid(), -- External session identifier
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  log_date DATE NOT NULL,
-  workout_status VARCHAR(20),
-  workout_type VARCHAR(50),
-  workout_notes TEXT,
-  meals_summary JSONB,
-  sleep_hours DECIMAL(3,1),
-  mood SMALLINT,
-  sick_flag BOOLEAN DEFAULT FALSE,
-  adherence_score SMALLINT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (user_id, log_date)
-);
-
--- Memories (vector store)
-CREATE TABLE public.memories (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  text TEXT NOT NULL,
-  metadata JSONB,
-  embedding vector(1536),
-  type VARCHAR(50),
-  importance SMALLINT DEFAULT 1,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- User summaries
-CREATE TABLE public.user_summaries (
-  user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
-  summary_text TEXT,
-  summary_embedding vector(1536),
+  session_started_at TIMESTAMPTZ DEFAULT now(),
+  session_ended_at TIMESTAMPTZ,
+  status VARCHAR(25) DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'awaiting_clarification', 'completed', 'abandoned')),
+  missing_required_fields JSONB,             -- list of required fields still missing
+  completion_percentage INTEGER DEFAULT 0,
+  ready_for_plan_generation BOOLEAN DEFAULT FALSE,
+  safety_review_required BOOLEAN DEFAULT FALSE,
+  trigger_plan_when_ready BOOLEAN DEFAULT TRUE,
+  abandoned_reason VARCHAR(255),
+  plan_generation_attempts INTEGER DEFAULT 0,
+  last_readiness_check TIMESTAMPTZ,
+  source VARCHAR(100),                       -- 'widget', 'app', 'web'
+  initial_profile JSONB,                     -- Basic profile info collected before chat
   last_updated TIMESTAMPTZ DEFAULT now()
 );
 
--- Plans
-CREATE TABLE public.plans (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  plan_json JSONB NOT NULL,
-  generator_version VARCHAR(50),
-  generated_at TIMESTAMPTZ DEFAULT now()
-);
+CREATE INDEX IF NOT EXISTS idx_onboarding_sessions_user_id ON public.onboarding_sessions(user_id);
 
--- Events / corrections
-CREATE TABLE public.events (
+-- 5) Onboarding responses table (audit trail per question)
+CREATE TABLE IF NOT EXISTS public.onboarding_responses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  response_id UUID UNIQUE DEFAULT gen_random_uuid(), -- External response identifier
+  session_id UUID, -- Can reference either internal or external session ID
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
-  event_type VARCHAR(50),
-  details JSONB,
-  created_by TEXT,
+  question_id TEXT,                           -- code-friendly id for the question (e.g., "goal_v1")
+  question_text TEXT,
+  raw_answer_text TEXT,
+  parsed_value JSONB,                         -- canonical parsed slot(s) { field: 'primary_goal', value: 'lose_fat' }
+  parsed_confidence DECIMAL(3,2) DEFAULT 1.00,-- 0.00 - 1.00
+  parser_version VARCHAR(20),                 -- Version of parser used
+  parsing_method VARCHAR(50),                 -- 'rule_based', 'ai_fallback', etc.
+  skipped BOOLEAN DEFAULT FALSE,
+  requires_clarification BOOLEAN DEFAULT FALSE,
+  clarified_with_response_id UUID,            -- FK to another onboarding_responses.id if used to resolve
+  answered_at TIMESTAMPTZ DEFAULT now(),
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_memories_user_id ON public.memories(user_id);
-CREATE INDEX IF NOT EXISTS idx_memories_embedding ON public.memories USING ivfflat (embedding) WITH (lists = 100);
-CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON public.daily_logs(user_id, log_date);
+CREATE INDEX IF NOT EXISTS idx_onboard_responses_session_id ON public.onboarding_responses(session_id);
+CREATE INDEX IF NOT EXISTS idx_onboard_responses_user_id ON public.onboarding_responses(user_id);
+
+-- 6) Quick helper: flag on users for partial onboarding preference (optional)
+ALTER TABLE public.users
+  ADD COLUMN last_onboarding_session UUID REFERENCES public.onboarding_sessions(id);
+
+-- 7) Optional: small performance indexes for plans lookups
+CREATE INDEX IF NOT EXISTS idx_plans_user_id ON public.plans(user_id);
+CREATE INDEX IF NOT EXISTS idx_plans_generated_at ON public.plans(generated_at);

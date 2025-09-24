@@ -328,6 +328,254 @@ Return only valid JSON. Be concise and use metric units.`;
   }
 });
 
+/**
+ * @swagger
+ * /profiles/{id}/confirm-onboarding:
+ *   patch:
+ *     summary: Confirm onboarding completion and accept parsed values
+ *     tags: [Profiles]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: User ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               session_id:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Onboarding session ID to confirm
+ *               accepted_values:
+ *                 type: object
+ *                 description: User-approved parsed values from onboarding
+ *               confirmation_timestamp:
+ *                 type: string
+ *                 format: date-time
+ *                 description: When the user confirmed the onboarding
+ *     responses:
+ *       200:
+ *         description: Onboarding confirmed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 profile_updated:
+ *                   type: boolean
+ *                 onboarding_complete:
+ *                   type: boolean
+ *       400:
+ *         description: Invalid request or session not found
+ *       404:
+ *         description: User not found
+ */
+router.patch('/:id/confirm-onboarding', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { session_id, accepted_values = {}, confirmation_timestamp } = req.body;
+
+    // Validate user exists
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Validate session exists and belongs to user
+    if (session_id) {
+      const { data: session, error: sessionError } = await supabase
+        .from('onboarding_sessions')
+        .select('*')
+        .eq('id', session_id)
+        .eq('user_id', userId)
+        .single();
+
+      if (sessionError || !session) {
+        return res.status(400).json({ error: 'Onboarding session not found or does not belong to user' });
+      }
+    }
+
+    // Start transaction to update profile and mark onboarding complete
+    const profileUpdates = {
+      onboarding_complete: true,
+      updated_at: new Date().toISOString()
+    };
+
+    // Map accepted values to profile fields
+    if (accepted_values.name_v1) {
+      profileUpdates.name = accepted_values.name_v1.value || accepted_values.name_v1;
+    }
+    
+    if (accepted_values.sex_v1) {
+      profileUpdates.sex = accepted_values.sex_v1.value || accepted_values.sex_v1;
+    }
+    
+    if (accepted_values.dob_v1) {
+      const dob = accepted_values.dob_v1.value || accepted_values.dob_v1;
+      profileUpdates.date_of_birth = new Date(dob).toISOString();
+      
+      // Calculate age
+      const age = new Date().getFullYear() - new Date(dob).getFullYear();
+      profileUpdates.age = age;
+    }
+    
+    if (accepted_values.weight_v1) {
+      profileUpdates.weight_kg = accepted_values.weight_v1.value || accepted_values.weight_v1;
+    }
+    
+    if (accepted_values.height_v1) {
+      profileUpdates.height_cm = accepted_values.height_v1.value || accepted_values.height_v1;
+    }
+    
+    if (accepted_values.primary_goal_v1) {
+      profileUpdates.primary_goal = accepted_values.primary_goal_v1.value || accepted_values.primary_goal_v1;
+    }
+    
+    if (accepted_values.activity_level_v1) {
+      profileUpdates.activity_level = accepted_values.activity_level_v1.value || accepted_values.activity_level_v1;
+    }
+    
+    if (accepted_values.training_experience_v1) {
+      profileUpdates.training_experience = accepted_values.training_experience_v1.value || accepted_values.training_experience_v1;
+    }
+    
+    if (accepted_values.preferred_tone_v1) {
+      profileUpdates.preferred_coach_tone = accepted_values.preferred_tone_v1.value || accepted_values.preferred_tone_v1;
+    }
+
+    // Handle injury information
+    if (accepted_values.injury_flag_v1) {
+      const hasInjury = accepted_values.injury_flag_v1.value || accepted_values.injury_flag_v1;
+      profileUpdates.injury = hasInjury ? 'yes' : 'no';
+      
+      if (hasInjury && accepted_values.injury_details_v1) {
+        const injuryDetails = accepted_values.injury_details_v1.value || accepted_values.injury_details_v1;
+        profileUpdates.injury_details = injuryDetails;
+        
+        // Simple injury severity assessment (in production, use AI)
+        const severityKeywords = {
+          3: ['severe', 'chronic', 'surgery', 'operation'],
+          2: ['moderate', 'pain', 'limitation', 'doctor'],
+          1: ['mild', 'minor', 'slight']
+        };
+        
+        let severity = 1;
+        const lowerDetails = injuryDetails.toLowerCase();
+        
+        for (const [level, keywords] of Object.entries(severityKeywords)) {
+          if (keywords.some(keyword => lowerDetails.includes(keyword))) {
+            severity = Math.max(severity, parseInt(level));
+          }
+        }
+        
+        profileUpdates.injury_severity = severity;
+        profileUpdates.safety_review_required = severity >= 2;
+      }
+    }
+
+    // Store additional profile data as JSONB
+    const additionalProfile = {};
+    
+    if (accepted_values.target_weight_v1) {
+      additionalProfile.target_weight_kg = accepted_values.target_weight_v1.value || accepted_values.target_weight_v1;
+    }
+    
+    if (accepted_values.availability_v1) {
+      additionalProfile.workout_availability = accepted_values.availability_v1.value || accepted_values.availability_v1;
+    }
+    
+    if (accepted_values.workout_setup_v1) {
+      additionalProfile.workout_setup = accepted_values.workout_setup_v1.value || accepted_values.workout_setup_v1;
+    }
+    
+    if (accepted_values.diet_pref_v1) {
+      additionalProfile.diet_preferences = accepted_values.diet_pref_v1.value || accepted_values.diet_pref_v1;
+    }
+    
+    if (accepted_values.allergies_v1) {
+      additionalProfile.food_allergies = accepted_values.allergies_v1.value || accepted_values.allergies_v1;
+    }
+
+    if (Object.keys(additionalProfile).length > 0) {
+      profileUpdates.additional_profile = additionalProfile;
+    }
+
+    // Store consent information
+    profileUpdates.consent_profile = {
+      consent_given: true,
+      consent_date: confirmation_timestamp || new Date().toISOString(),
+      terms_version: 'v1',
+      onboarding_session_id: session_id
+    };
+
+    // Update profile
+    const { data: updatedProfile, error: updateError } = await supabase
+      .from('profiles')
+      .update(profileUpdates)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating profile:', updateError);
+      
+      // Try to create profile if it doesn't exist
+      if (updateError.code === 'PGRST116') {
+        const createResult = await supabase
+          .from('profiles')
+          .insert({ user_id: userId, ...profileUpdates })
+          .select()
+          .single();
+          
+        if (createResult.error) {
+          return res.status(500).json({ error: 'Failed to create/update profile' });
+        }
+      } else {
+        return res.status(500).json({ error: 'Failed to update profile' });
+      }
+    }
+
+    // Update user's last onboarding session
+    if (session_id) {
+      await supabase
+        .from('users')
+        .update({ 
+          last_onboarding_session: session_id,
+          last_active: new Date().toISOString()
+        })
+        .eq('id', userId);
+    }
+
+    res.json({
+      success: true,
+      message: 'Onboarding confirmed and profile updated successfully',
+      profile_updated: true,
+      onboarding_complete: true,
+      safety_review_required: profileUpdates.safety_review_required || false
+    });
+
+  } catch (error) {
+    console.error('Error confirming onboarding:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Optional: enums for frontend to build selects
 router.get('/options', (_req, res) => {
   return res.status(200).json({

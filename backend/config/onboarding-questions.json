@@ -1,0 +1,289 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-09-24",
+  "questions": [
+    {
+      "id": "name_v1",
+      "question": "What's your name?",
+      "type": "text",
+      "required": true,
+      "category": "basic_info",
+      "order": 1,
+      "validation": {
+        "min_length": 2,
+        "max_length": 50,
+        "pattern": "^[a-zA-Z\\s]+$"
+      },
+      "ai_prompt": "Ask for the user's name in a friendly, welcoming way."
+    },
+    {
+      "id": "dob_v1",
+      "question": "What's your date of birth?",
+      "type": "date",
+      "required": true,
+      "category": "basic_info",
+      "order": 2,
+      "validation": {
+        "min_age": 13,
+        "max_age": 120
+      },
+      "ai_prompt": "Ask for date of birth to calculate age for personalized recommendations."
+    },
+    {
+      "id": "sex_v1",
+      "question": "What's your biological sex?",
+      "type": "single_choice",
+      "required": true,
+      "category": "basic_info",
+      "order": 3,
+      "options": ["male", "female", "other"],
+      "ai_prompt": "Ask for biological sex for accurate metabolic calculations."
+    },
+    {
+      "id": "weight_v1",
+      "question": "What's your current weight?",
+      "type": "number",
+      "required": true,
+      "category": "basic_info",
+      "order": 4,
+      "validation": {
+        "min": 30,
+        "max": 300,
+        "unit": "kg"
+      },
+      "ai_prompt": "Ask for current weight in a supportive, non-judgmental way."
+    },
+    {
+      "id": "height_v1",
+      "question": "What's your height?",
+      "type": "number",
+      "required": false,
+      "category": "basic_info",
+      "order": 5,
+      "validation": {
+        "min": 100,
+        "max": 250,
+        "unit": "cm"
+      },
+      "ai_prompt": "Ask for height, mention it's optional but recommended for better plan accuracy."
+    },
+    {
+      "id": "primary_goal_v1",
+      "question": "What's your primary health and fitness goal?",
+      "type": "single_choice",
+      "required": true,
+      "category": "goals",
+      "order": 6,
+      "options": [
+        "weight_loss",
+        "muscle_gain",
+        "general_fitness",
+        "endurance_improvement",
+        "strength_building",
+        "flexibility_mobility",
+        "stress_management",
+        "better_sleep",
+        "energy_boost"
+      ],
+      "ai_prompt": "Ask about their main goal to focus the plan effectively."
+    },
+    {
+      "id": "target_weight_v1",
+      "question": "What's your target weight?",
+      "type": "number",
+      "required": false,
+      "category": "goals",
+      "order": 7,
+      "conditional": {
+        "show_if": "primary_goal_v1 == 'weight_loss' || primary_goal_v1 == 'muscle_gain'"
+      },
+      "validation": {
+        "min": 30,
+        "max": 300,
+        "unit": "kg"
+      },
+      "ai_prompt": "Ask for target weight if their goal involves weight change."
+    },
+    {
+      "id": "activity_level_v1",
+      "question": "What's your current activity level?",
+      "type": "single_choice",
+      "required": true,
+      "category": "lifestyle",
+      "order": 8,
+      "options": [
+        "sedentary",
+        "lightly_active",
+        "moderately_active",
+        "very_active",
+        "extremely_active"
+      ],
+      "descriptions": {
+        "sedentary": "Little to no exercise, desk job",
+        "lightly_active": "Light exercise 1-3 days/week",
+        "moderately_active": "Moderate exercise 3-5 days/week",
+        "very_active": "Hard exercise 6-7 days/week",
+        "extremely_active": "Very hard exercise, physical job"
+      },
+      "ai_prompt": "Ask about current activity level with descriptions for clarity."
+    },
+    {
+      "id": "availability_v1",
+      "question": "How much time can you dedicate to workouts per day?",
+      "type": "single_choice",
+      "required": true,
+      "category": "lifestyle",
+      "order": 9,
+      "options": [
+        "15_minutes",
+        "30_minutes",
+        "45_minutes",
+        "60_minutes",
+        "90_minutes",
+        "more_than_90"
+      ],
+      "descriptions": {
+        "15_minutes": "15 minutes or less",
+        "30_minutes": "15-30 minutes",
+        "45_minutes": "30-45 minutes",
+        "60_minutes": "45-60 minutes",
+        "90_minutes": "60-90 minutes",
+        "more_than_90": "More than 90 minutes"
+      },
+      "ai_prompt": "Ask about available workout time to design realistic plans."
+    },
+    {
+      "id": "workout_setup_v1",
+      "question": "Where do you prefer to work out?",
+      "type": "single_choice",
+      "required": true,
+      "category": "preferences",
+      "order": 10,
+      "options": [
+        "home_no_equipment",
+        "home_basic_equipment",
+        "home_full_gym",
+        "commercial_gym",
+        "outdoor",
+        "mixed"
+      ],
+      "descriptions": {
+        "home_no_equipment": "At home with no equipment",
+        "home_basic_equipment": "At home with basic equipment (dumbbells, resistance bands)",
+        "home_full_gym": "At home with full gym setup",
+        "commercial_gym": "At a commercial gym",
+        "outdoor": "Outdoor activities (running, cycling, etc.)",
+        "mixed": "Mix of different locations"
+      },
+      "ai_prompt": "Ask about workout preferences to tailor exercise recommendations."
+    },
+    {
+      "id": "injury_flag_v1",
+      "question": "Do you have any current injuries or physical limitations?",
+      "type": "boolean",
+      "required": true,
+      "category": "health_safety",
+      "order": 11,
+      "ai_prompt": "Ask about injuries or limitations for safety considerations."
+    },
+    {
+      "id": "injury_details_v1",
+      "question": "Please describe your injuries or physical limitations:",
+      "type": "text",
+      "required": false,
+      "category": "health_safety",
+      "order": 12,
+      "conditional": {
+        "show_if": "injury_flag_v1 == true"
+      },
+      "validation": {
+        "max_length": 500
+      },
+      "safety_flag": true,
+      "ai_prompt": "Ask for specific details about injuries to ensure safe exercise recommendations."
+    },
+    {
+      "id": "diet_pref_v1",
+      "question": "Do you follow any specific diet or have dietary preferences?",
+      "type": "multiple_choice",
+      "required": false,
+      "category": "nutrition",
+      "order": 13,
+      "options": [
+        "none",
+        "vegetarian",
+        "vegan",
+        "pescatarian",
+        "keto",
+        "paleo",
+        "mediterranean",
+        "intermittent_fasting",
+        "low_carb",
+        "high_protein",
+        "gluten_free",
+        "dairy_free"
+      ],
+      "ai_prompt": "Ask about dietary preferences to customize nutrition plans."
+    },
+    {
+      "id": "allergies_v1",
+      "question": "Do you have any food allergies or intolerances?",
+      "type": "text",
+      "required": false,
+      "category": "nutrition",
+      "order": 14,
+      "validation": {
+        "max_length": 300
+      },
+      "safety_flag": true,
+      "ai_prompt": "Ask about food allergies for safe nutrition recommendations."
+    },
+    {
+      "id": "training_experience_v1",
+      "question": "What's your experience with structured fitness training?",
+      "type": "single_choice",
+      "required": false,
+      "category": "experience",
+      "order": 15,
+      "options": [
+        "complete_beginner",
+        "some_experience",
+        "intermediate",
+        "advanced",
+        "expert"
+      ],
+      "descriptions": {
+        "complete_beginner": "Never followed a structured program",
+        "some_experience": "Tried fitness programs occasionally",
+        "intermediate": "Regularly follow fitness programs",
+        "advanced": "Years of consistent training experience",
+        "expert": "Professional or competitive level"
+      },
+      "ai_prompt": "Ask about training experience to set appropriate difficulty levels."
+    },
+    {
+      "id": "preferred_tone_v1",
+      "question": "How would you like me to communicate with you?",
+      "type": "single_choice",
+      "required": false,
+      "category": "preferences",
+      "order": 16,
+      "options": [
+        "encouraging_supportive",
+        "direct_straightforward",
+        "motivational_challenging",
+        "friendly_casual",
+        "professional_formal"
+      ],
+      "descriptions": {
+        "encouraging_supportive": "Warm, encouraging, and supportive",
+        "direct_straightforward": "Direct and to-the-point",
+        "motivational_challenging": "Motivational with gentle challenges",
+        "friendly_casual": "Friendly and casual",
+        "professional_formal": "Professional and formal"
+      },
+      "default": "encouraging_supportive",
+      "ai_prompt": "Ask about communication preferences for better interaction."
+    }
+  ]
+}

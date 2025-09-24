@@ -1,0 +1,17 @@
+question_id,version,required,category,order,type,safety_flag,conditional
+name_v1,1,true,basic_info,1,text,false,
+dob_v1,1,true,basic_info,2,date,false,
+sex_v1,1,true,basic_info,3,single_choice,false,
+weight_v1,1,true,basic_info,4,number,false,
+height_v1,1,false,basic_info,5,number,false,
+primary_goal_v1,1,true,goals,6,single_choice,false,
+target_weight_v1,1,false,goals,7,number,false,primary_goal_v1
+activity_level_v1,1,true,lifestyle,8,single_choice,false,
+availability_v1,1,true,lifestyle,9,single_choice,false,
+workout_setup_v1,1,true,preferences,10,single_choice,false,
+injury_flag_v1,1,true,health_safety,11,boolean,false,
+injury_details_v1,1,false,health_safety,12,text,true,injury_flag_v1
+diet_pref_v1,1,false,nutrition,13,multiple_choice,false,
+allergies_v1,1,false,nutrition,14,text,true,
+training_experience_v1,1,false,experience,15,single_choice,false,
+preferred_tone_v1,1,false,preferences,16,single_choice,false,

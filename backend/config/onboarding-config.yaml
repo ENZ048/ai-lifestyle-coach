@@ -1,0 +1,99 @@
+# AI Lifestyle Coach - Onboarding Configuration
+# Version: 1.0.0
+# Last Updated: 2025-09-24
+
+# Confidence and Safety Settings
+confidence:
+  # Minimum confidence threshold for AI responses
+  # Below this threshold, the system will ask for clarification
+  threshold: 0.60
+  
+  # High confidence threshold for auto-actions
+  # Above this threshold, the system can take actions without confirmation
+  high_threshold: 0.85
+
+safety:
+  # Safety severity threshold (1-5 scale)
+  # 1: Minor concern, 2: Moderate, 3: Significant, 4: High risk, 5: Critical
+  severity_threshold: 2
+  
+  # Flags that trigger safety review
+  safety_flags:
+    - injury_details_v1
+    - allergies_v1
+  
+  # Keywords that trigger safety alerts
+  safety_keywords:
+    - "heart condition"
+    - "diabetes"
+    - "pregnancy"
+    - "surgery"
+    - "medication"
+    - "doctor"
+    - "physician"
+    - "medical"
+    - "chronic"
+    - "severe"
+    - "pain"
+    - "anaphylaxis"
+    - "epipen"
+
+# Plan Generation Policy
+plan_generation:
+  # When to auto-generate plan
+  # Options: "auto", "confirmation_required", "manual_trigger"
+  policy: "confirmation_required"
+  
+  # Minimum required fields for plan generation
+  required_completion_percentage: 90
+  
+  # Auto-generate if all required fields are completed
+  auto_generate_on_required_complete: true
+  
+  # Show plan preview before final generation
+  show_preview: true
+
+# Onboarding Flow Settings
+onboarding:
+  # Maximum time per question (in minutes)
+  question_timeout: 15
+  
+  # Save progress after each answer
+  auto_save: true
+  
+  # Allow skipping optional questions
+  allow_skip_optional: true
+  
+  # Maximum retries for invalid answers
+  max_retries: 3
+  
+  # Session expiry (in hours)
+  session_expiry: 24
+
+# Validation Settings
+validation:
+  # Strict validation for required fields
+  strict_required: true
+  
+  # Auto-correct common input errors
+  auto_correct: true
+  
+  # Language detection and support
+  supported_languages: ["en", "es", "fr", "de"]
+  default_language: "en"
+
+# AI Behavior Settings
+ai_behavior:
+  # Personality traits (1-10 scale)
+  empathy_level: 8
+  encouragement_level: 7
+  professionalism_level: 6
+  
+  # Response length preference
+  response_length: "medium"  # short, medium, long
+  
+  # Use emojis in responses
+  use_emojis: true
+  
+  # Adaptation based on user responses
+  adaptive_tone: true

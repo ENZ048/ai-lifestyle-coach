@@ -4,7 +4,11 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 
 const plansRouter = require('./routes/plans');
+const plansGuardrailsRouter = require('./routes/plans-guardrails');
+const readinessRouter = require('./routes/readiness');
 const profileRouter = require('./routes/profile');
+const onboardingRouter = require('./routes/onboarding');
+const onboardingApiRouter = require('./routes/onboarding-api');
 const { authenticate, optionalAuth } = require('./middleware/auth');
 const { requestLogger, errorLogger } = require('./middleware/logger');
 
@@ -24,8 +28,18 @@ app.get('/auth/user', optionalAuth, (req, res) => {
 });
 
 // Protected routes
+app.use('/api/plans', authenticate, plansRouter);
+app.use('/api/plans', authenticate, plansGuardrailsRouter);
+app.use('/api/readiness', authenticate, readinessRouter);
+app.use('/api/profiles', authenticate, profileRouter);
+app.use('/api/onboarding', authenticate, onboardingApiRouter);
+app.use('/api/onboarding-legacy', authenticate, onboardingRouter);
+
+// Legacy routes (for backward compatibility)
 app.use('/plans', authenticate, plansRouter);
-app.use('/profile', authenticate, profileRouter);
+app.use('/profiles', authenticate, profileRouter);
+app.use('/onboarding', authenticate, onboardingApiRouter);
+app.use('/onboarding-legacy', authenticate, onboardingRouter);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
