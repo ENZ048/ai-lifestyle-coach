@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/apiClient';
 import { useAuth } from '../context/authContextShared';
+import PlanGenerationAnimation from '../components/PlanGenerationAnimation';
+import PlanDisplay from '../components/PlanDisplay';
 
 // Helper mappings
 const GOAL_MAP = {
@@ -15,19 +17,34 @@ const Onboarding = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  // Steps
-  // 0: Phone
-  // 1: Basic Profile
-  // 2: Goals/Activity
-  // 3: Onboarding Complete
-  // 4: App Info (quick)
-  // 5: Diet Preferences
-  // 6: Workout Setup
-  // 7: Sleep/Medical
-  // 8: Personalization Complete
+  // Steps (updated to remove phone step since we have auth)
+  // 0: Basic Profile
+  // 1: Goals/Activity
+  // 2: Onboarding Complete
+  // 3: App Info (quick)
+  // 4: Diet Preferences
+  // 5: Workout Setup
+  // 6: Sleep/Medical  
+  // 7: Personalization Complete
+  // 'generating': Show animation while creating plan
+  // 'plan': Display the generated plan
   const [currentStep, setCurrentStep] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPlan, setGeneratedPlan] = useState(null);
+  const [showAnimation, setShowAnimation] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
+
+  // Effect to trigger animation completion when plan data becomes available
+  useEffect(() => {
+    if (generatedPlan && !isGenerating && showAnimation) {
+      console.log('Plan data available, triggering animation completion...');
+      // Small delay to ensure animation component has processed the state change
+      const timer = setTimeout(() => {
+        handleAnimationComplete();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [generatedPlan, isGenerating, showAnimation]);
 
   const [formData, setFormData] = useState({
     phoneNumber: '',
@@ -98,47 +115,7 @@ const Onboarding = () => {
     }
   };
 
-  // Background plan generation once personalization is complete and success screen is shown
-  useEffect(() => {
-    const shouldGenerate = currentStep === 8 && !generatedPlan && !isGenerating;
-    if (!shouldGenerate) return;
-    const generate = async () => {
-      setIsGenerating(true);
-      try {
-        const payload = {
-          goal: GOAL_MAP[formData.primaryGoal] || 'general_fitness',
-          preferences: {
-            targetWeight: formData.targetWeight || undefined,
-            activityLevel: formData.activityLevel,
-            timeAvailability: formData.timeAvailability,
-            dietPreference: formData.dietPreference || 'none',
-            allergies: formData.allergies || '',
-            mealFrequency: formData.mealFrequency,
-            workoutSetup: formData.workoutSetup,
-            injury: formData.injury === 'yes',
-            injuryNotes: formData.injury === 'yes' ? formData.injuryNotes : '',
-            sleepHours: formData.sleepHours,
-            medicalConditions: formData.medicalConditions || '',
-            userInfo: {
-              phoneNumber: formData.phoneNumber,
-              name: formData.name,
-              dob: formData.dob,
-              sex: formData.sex,
-              weight: formData.weight,
-              height: formData.height,
-            },
-          },
-        };
-        const res = await api.post('/plans/generate', payload);
-        setGeneratedPlan(res.data);
-      } catch (e) {
-        console.error('Plan generation failed', e);
-      } finally {
-        setIsGenerating(false);
-      }
-    };
-    generate();
-  }, [currentStep, formData, generatedPlan, isGenerating]);
+  // Plan is generated via POST /profile/complete at final step
 
   const renderHeader = () => {
     const p = phaseInfo();
@@ -432,22 +409,192 @@ const Onboarding = () => {
   };
 
   const primaryCtaText = () => {
-    if (currentStep === 3) return 'Continue';
-    if (currentStep === 4) return 'Next';
-    if (currentStep === 8) return 'Start My Plan';
-    if (currentStep <= 2 || (currentStep >= 5 && currentStep <= 7)) return 'Next';
+    if (currentStep === 2) return 'Continue';
+    if (currentStep === 3) return 'Next';
+    if (currentStep === 7) return 'Start My Plan';
+    if (currentStep <= 1 || (currentStep >= 4 && currentStep <= 6)) return 'Next';
     return 'Continue';
   };
 
   const onPrimary = async () => {
-    if (currentStep === 8) {
-      // Navigate to home; plan may have been generated already.
-      navigate('/home');
+    if (currentStep === 7) { // Final step - start plan generation
+      setShowAnimation(true);
+      setIsGenerating(true);
+
+      // Set a fallback timer in case the backend takes too long
+      const fallbackTimer = setTimeout(() => {
+        if (isGenerating) {
+          console.log('Backend taking too long, creating fallback plan');
+          setGeneratedPlan({
+            title: "Starter Plan - Backend Timeout",
+            duration_weeks: 1,
+            daily: [
+              {
+                day: "Day 1",
+                focus: "Getting Started",
+                description: "Backend took longer than expected. Here's a starter plan to get you going!",
+                workout: "20-minute beginner workout: Light cardio + basic bodyweight exercises",
+                meals: [
+                  "Healthy breakfast with protein and whole grains",
+                  "Balanced lunch with lean protein and vegetables", 
+                  "Nutritious dinner to fuel your goals",
+                  "Healthy snack options"
+                ],
+                notes: "This is a temporary plan. Try refreshing or contact support for your personalized plan."
+              }
+            ]
+          });
+        }
+      }, 30000); // 30 second timeout
+
+      try {
+        // Complete onboarding: upsert profile and generate plan
+        const { data } = await api.post('/profile/complete', {
+          name: formData.name,
+          dob: formData.dob,
+          sex: formData.sex,
+          weight: parseFloat(formData.weight),
+          height: formData.height ? parseInt(formData.height, 10) : null,
+          primaryGoal: formData.primaryGoal,
+          targetWeight: formData.targetWeight ? parseFloat(formData.targetWeight) : null,
+          activityLevel: formData.activityLevel,
+          timeAvailability: formData.timeAvailability,
+          dietPreference: formData.dietPreference,
+          allergies: formData.allergies || '',
+          mealFrequency: formData.mealFrequency,
+          workoutSetup: formData.workoutSetup,
+          injury: formData.injury,
+          injuryNotes: formData.injuryNotes || '',
+          sleepHours: formData.sleepHours ? parseFloat(formData.sleepHours) : null,
+          medicalConditions: formData.medicalConditions || ''
+        });
+
+        if (data?.plan) {
+          console.log('Received plan data from backend:', data.plan);
+          // Transform the backend data structure to match what PlanDisplay expects
+          const transformedPlan = {
+            title: data.plan.title,
+            duration_weeks: data.plan.duration_weeks,
+            daily: data.plan.daily.map(day => ({
+              day: day.day,
+              focus: `${day.day} - Workout & Nutrition`,
+              description: day.notes || `Your personalized plan for ${day.day}`,
+              workout: day.workout, // Keep the workout as a string from backend
+              meals: day.meals, // Keep meals as array from backend
+              notes: day.notes
+            }))
+          };
+          console.log('Transformed plan data:', transformedPlan);
+          setGeneratedPlan(transformedPlan);
+        } else {
+          // Fallback plan if API doesn't return one
+          setGeneratedPlan({
+            title: "Welcome Plan",
+            duration_weeks: 1,
+            daily: [
+              {
+                day: "Day 1",
+                focus: "Getting Started",
+                description: "Welcome to your fitness journey! Let's start with the basics.",
+                workout: {
+                  description: "20-minute beginner workout focusing on basic movements",
+                  exercises: [
+                    { name: "Warm-up Walk", duration: "10 minutes", notes: "Light pace to get your body moving" },
+                    { name: "Bodyweight Squats", sets: "3", reps: "10-15", rest: "60 seconds" },
+                    { name: "Push-ups (modified if needed)", sets: "3", reps: "5-10", rest: "60 seconds" },
+                    { name: "Plank Hold", sets: "3", duration: "20-30 seconds", rest: "60 seconds" }
+                  ]
+                },
+                meals: {
+                  breakfast: "Oatmeal with banana and honey",
+                  lunch: "Grilled chicken salad with mixed vegetables",
+                  dinner: "Baked salmon with quinoa and steamed broccoli",
+                  snacks: "Greek yogurt with berries or handful of nuts"
+                },
+                notes: "Focus on form over speed. Stay hydrated and listen to your body!"
+              }
+            ]
+          });
+        }
+        
+        // Don't call handleAnimationComplete immediately - let the animation component decide when to finish
+      } catch (error) {
+        console.error('Failed to complete onboarding:', error);
+        // Create a simple starter plan as fallback
+        setGeneratedPlan({
+          title: "Starter Plan",
+          duration_weeks: 1,
+          daily: [
+            {
+              day: "Day 1",
+              focus: "Welcome Day",
+              description: "Let's start your fitness journey with simple, effective exercises.",
+              workout: {
+                description: "20-minute beginner workout focusing on basic movements"
+              },
+              meals: {
+                breakfast: "Healthy breakfast based on your preferences",
+                lunch: "Balanced lunch with protein and vegetables", 
+                dinner: "Nutritious dinner to fuel your goals"
+              },
+              notes: "Welcome to your AI Lifestyle Coach! We'll help you achieve your fitness goals step by step."
+            }
+          ]
+        });
+      } finally {
+        clearTimeout(fallbackTimer);
+        setIsGenerating(false);
+      }
       return;
     }
     goNext();
   };
 
+  const handleAnimationComplete = () => {
+    // Only complete animation if we have the plan data and are not generating
+    if (generatedPlan && !isGenerating) {
+      console.log('Animation completing with plan data');
+      setShowAnimation(false);
+      setShowPlan(true);
+    } else {
+      console.log('Animation completion called but conditions not met:', { 
+        hasPlan: !!generatedPlan, 
+        isGenerating 
+      });
+    }
+  };
+
+  // Show plan generation animation
+  if (showAnimation) {
+    return (
+      <PlanGenerationAnimation 
+        onComplete={handleAnimationComplete}
+        isGenerating={isGenerating}
+        hasPlan={!!generatedPlan}
+        userInfo={{
+          name: formData.name,
+          primaryGoal: formData.primaryGoal
+        }}
+      />
+    );
+  }
+
+  // Show generated plan
+  if (showPlan) {
+    return (
+      <PlanDisplay 
+        plan={generatedPlan}
+        userInfo={{
+          name: formData.name,
+          primaryGoal: formData.primaryGoal,
+          weight: formData.weight,
+          activityLevel: formData.activityLevel
+        }}
+      />
+    );
+  }
+
+  // Regular onboarding flow
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50 px-4 py-6">
       <div className="max-w-md mx-auto">
@@ -471,10 +618,10 @@ const Onboarding = () => {
               )}
               <button
                 onClick={onPrimary}
-                disabled={!isStepValid()}
-                className={`px-5 py-2 rounded-lg text-white ${isStepValid() ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
+                disabled={!isStepValid() || isGenerating}
+                className={`px-5 py-2 rounded-lg text-white ${(isStepValid() && !isGenerating) ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
               >
-                {primaryCtaText()}
+                {isGenerating ? 'Creating Plan...' : primaryCtaText()}
               </button>
             </div>
           </div>

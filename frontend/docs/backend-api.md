@@ -81,17 +81,10 @@ Middleware behavior:
       "saved": true,
       "record": {
         "id": "uuid",
-        "user_id": null,
+        "user_id": "uuid",
         "plan_json": { "..." },
         "generated_at": "2025-09-23T12:34:56.000Z",
-        "generator_version": "gpt-4o-mini",
-        "metadata": {
-          "raw_text": "...raw llm output...",
-          "auth_uid": "<firebase_uid> | null",
-          "prompt_summary": { "goal": "...", "preferences": { "..." } }
-        },
-        "created_at": "2025-09-23T12:34:56.000Z",
-        "updated_at": "2025-09-23T12:34:56.000Z"
+        "generator_version": "gpt-4o-mini"
       }
     }
     ```
@@ -119,8 +112,105 @@ Middleware behavior:
     ```
 
 - Notes:
-  - The DB schema expects `user_id` as a UUID referencing a users table. Since we use Firebase Auth, we currently store the Firebase UID under `metadata.auth_uid` and set `user_id: null`. Add a mapping layer later if needed.
+  - The DB schema expects `user_id` as UUID. The backend now ensures a `users` row exists for the authenticated email and sets `plans.user_id` accordingly.
   - The LLM output is parsed as JSON; if parsing fails, the raw text is returned inside `{ "raw": "..." }` to avoid errors.
+
+---
+
+### GET `/profile`
+- Auth: Required (`authenticate`)
+- Description: Fetch the current user's onboarding profile. If not found, returns `exists: false`.
+- Response 200 OK (exists):
+  ```json
+  {
+    "exists": true,
+    "profile": {
+      "name": "John Doe",
+      "dob": "1990-05-20",
+      "sex": "male",
+      "weight": 75.5,
+      "height": 178,
+      "primaryGoal": "weight_loss",
+      "targetWeight": 70,
+      "activityLevel": "moderately_active",
+      "timeAvailability": "morning",
+      "dietPreference": "omnivore",
+      "allergies": "peanuts",
+      "mealFrequency": "3",
+      "workoutSetup": "home",
+      "injury": "no",
+      "injuryNotes": null,
+      "sleepHours": 7.5,
+      "medicalConditions": null,
+      "updatedAt": "2025-09-23T12:34:56.000Z"
+    }
+  }
+  ```
+- Response 200 OK (not exists):
+  ```json
+  { "exists": false, "profile": null }
+  ```
+
+### PUT `/profile`
+- Auth: Required (`authenticate`)
+- Description: Creates or updates the current user's onboarding profile. Upserts by `user_id`.
+- Request body:
+  ```json
+  {
+    "name": "John Doe",
+    "dob": "1990-05-20",
+    "sex": "male",
+    "weight": 75.5,
+    "height": 178,
+    "primaryGoal": "weight_loss",
+    "targetWeight": 70,
+    "activityLevel": "moderately_active",
+    "timeAvailability": "morning",
+    "dietPreference": "omnivore",
+    "allergies": "peanuts",
+    "mealFrequency": "3",
+    "workoutSetup": "home",
+    "injury": "no",
+    "injuryNotes": "",
+    "sleepHours": 7.5,
+    "medicalConditions": ""
+  }
+  ```
+- Response 200 OK:
+  ```json
+  { "profile": { "...same shape as GET /profile..." } }
+  ```
+
+Validation rules: the backend validates presence and ranges (e.g., `sleepHours` 0-24); enum-like strings are normalized to match DB checks.
+
+---
+
+### POST `/profile/complete`
+- Auth: Required (`authenticate`)
+- Description: One-shot endpoint for onboarding completion. Validates and upserts the profile, then generates and saves a 7-day plan for the user.
+- Request body: Same as `PUT /profile`.
+- Responses:
+  - 201 Created (plan saved):
+    ```json
+    {
+      "profile": { "...profile as returned by GET /profile..." },
+      "plan": { "...generated plan json..." },
+      "planSaved": true,
+      "planRecord": { "id": "uuid", "user_id": "uuid", "generated_at": "...", "generator_version": "gpt-4o-mini", "plan_json": {"..."} }
+    }
+    ```
+  - 201 Created (plan not saved due to DB error; plan still returned):
+    ```json
+    {
+      "profile": { "..." },
+      "plan": { "..." },
+      "planSaved": false,
+      "supabaseError": { "message": "...", "details": "..." }
+    }
+    ```
+
+Notes:
+- The backend ensures a `users` row exists for the authenticated identity. For phone-auth users without an email, a stable placeholder email `<uid>@firebase.local` is used internally for the `users.email` field.
 
 ## Conventions & Status Codes
 - 200 OK: Successful GETs or auth checks
@@ -130,4 +220,5 @@ Middleware behavior:
 - 500 Internal Server Error: Unexpected server error
 
 ## Changelog
+- 2025-09-24: Added `/profile` GET/PUT, updated `/plans/generate` to set `user_id` and removed unused metadata in docs.
 - 2025-09-23: Initial document with Firebase Phone Auth and `/plans/generate` endpoint.

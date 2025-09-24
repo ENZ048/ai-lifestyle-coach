@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../lib/apiClient';
 import PlanCard from '../components/PlanCard';
 import CheckInButton from '../components/CheckInButton';
 
@@ -13,8 +13,8 @@ const Home = () => {
 
   const fetchCurrentPlan = async () => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/plans/current`);
-      setCurrentPlan(response.data);
+      const response = await api.get('/plans/current');
+      setCurrentPlan(response.data.plan?.plan_json || null);
     } catch (error) {
       console.error('Error fetching current plan:', error);
     } finally {
@@ -24,7 +24,7 @@ const Home = () => {
 
   const handleCheckIn = async (type) => {
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/logs/checkin`, {
+      await api.post('/logs/checkin', {
         type,
         date: new Date().toISOString().split('T')[0]
       });
