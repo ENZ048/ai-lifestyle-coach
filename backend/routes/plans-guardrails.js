@@ -74,7 +74,7 @@ router.post('/generate-with-guardrails', async (req, res) => {
 
     const { user_id, session_id, force, include_user_summaries } = value;
 
-    console.log(`🎯 Plan generation requested for user ${user_id}, session ${session_id}`);
+    console.log(`Plan generation requested for user ${user_id}, session ${session_id}`);
 
     // Step 1: Verify session exists and check readiness
     const { data: session, error: sessionError } = await supabaseClient
@@ -120,7 +120,7 @@ router.post('/generate-with-guardrails', async (req, res) => {
     }
 
     // Step 4: Generate plan with guardrails
-    console.log(`🤖 Starting AI plan generation with safety guardrails...`);
+    console.log(`Starting AI plan generation with safety guardrails...`);
     const generationResult = await planGenerator.generatePlan({
       user_id,
       session_id,
@@ -145,7 +145,7 @@ router.post('/generate-with-guardrails', async (req, res) => {
       .single();
 
     if (saveError) {
-      console.error('Failed to save plan:', saveError);
+      console.error('Failed to save plan:', saveError.message);
       return res.status(500).json({
         error: 'Failed to save generated plan',
         details: saveError.message
@@ -172,7 +172,7 @@ router.post('/generate-with-guardrails', async (req, res) => {
         .eq('user_id', user_id);
     }
 
-    console.log(`✅ Plan generated successfully: ${savedPlan.id}`);
+    console.log(`Plan generated successfully: ${savedPlan.id}`);
 
     // Step 8: Return comprehensive response
     res.status(201).json({
@@ -193,7 +193,7 @@ router.post('/generate-with-guardrails', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Plan generation error:', error);
+    console.error('Plan generation error:', error.message);
     res.status(500).json({
       error: 'Internal server error',
       details: error.message
@@ -278,7 +278,7 @@ router.post('/auto-generate', async (req, res) => {
     // Queue generation (in production, use proper job queue)
     setTimeout(async () => {
       try {
-        console.log(`🤖 Auto-generating plan for session ${session_id}`);
+        console.log(`Auto-generating plan for session ${session_id}`);
         
         const planData = await gatherPlanGenerationData(session.user_id, session_id, true);
         if (!planData.success) {
@@ -305,12 +305,12 @@ router.post('/auto-generate', async (req, res) => {
             })
             .eq('id', session_id);
 
-          console.log(`✅ Auto-generated plan for session ${session_id}`);
+          console.log(`Auto-generated plan for session ${session_id}`);
         } else {
-          console.error(`❌ Auto-generation failed for session ${session_id}:`, generationResult.error);
+          console.error(`Auto-generation failed for session ${session_id}:`, generationResult.error);
         }
       } catch (error) {
-        console.error(`❌ Auto-generation error for session ${session_id}:`, error);
+        console.error(`Auto-generation error for session ${session_id}:`, error.message);
       }
     }, 2000); // 2-second delay
 
@@ -321,7 +321,7 @@ router.post('/auto-generate', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Auto-generation error:', error);
+    console.error('Auto-generation error:', error.message);
     res.status(500).json({
       error: 'Internal server error',
       details: error.message
@@ -526,7 +526,7 @@ router.post('/:id/safety-review', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Safety review error:', error);
+    console.error('Safety review error:', error.message);
     res.status(500).json({
       error: 'Internal server error',
       details: error.message

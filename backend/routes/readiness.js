@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const OnboardingReadinessChecker = require('../services/OnboardingReadinessChecker');
-const { authenticateUser } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 const readinessChecker = new OnboardingReadinessChecker();
 
@@ -9,12 +9,12 @@ const readinessChecker = new OnboardingReadinessChecker();
  * GET /readiness/session/:sessionId
  * Check readiness status of a specific onboarding session
  */
-router.get('/session/:sessionId', authenticateUser, async (req, res) => {
+router.get('/session/:sessionId', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { force = false } = req.query;
 
-    console.log(`[API] Checking readiness for session ${sessionId}, force: ${force}`);
+    console.log(`Checking readiness for session ${sessionId}`);
 
     const result = await readinessChecker.checkSessionReadiness(sessionId, {
       forceCheck: force === 'true'
@@ -26,7 +26,7 @@ router.get('/session/:sessionId', authenticateUser, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error checking session readiness:', error);
+    console.error('Error checking session readiness:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to check session readiness',
@@ -39,12 +39,12 @@ router.get('/session/:sessionId', authenticateUser, async (req, res) => {
  * POST /readiness/session/:sessionId/force-ready
  * Mark session as ready for plan generation (user forced)
  */
-router.post('/session/:sessionId/force-ready', authenticateUser, async (req, res) => {
+router.post('/session/:sessionId/force-ready', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { reason = 'user_forced' } = req.body;
 
-    console.log(`[API] Force-marking session ${sessionId} as ready`);
+    console.log(`Force-marking session ${sessionId} as ready`);
 
     const result = await readinessChecker.checkSessionReadiness(sessionId, {
       userForced: true
@@ -66,7 +66,7 @@ router.post('/session/:sessionId/force-ready', authenticateUser, async (req, res
     }
 
   } catch (error) {
-    console.error('Error force-marking session ready:', error);
+    console.error('Error force-marking session ready:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to force session ready',
@@ -79,12 +79,12 @@ router.post('/session/:sessionId/force-ready', authenticateUser, async (req, res
  * POST /readiness/session/:sessionId/abandon
  * Mark session as abandoned
  */
-router.post('/session/:sessionId/abandon', authenticateUser, async (req, res) => {
+router.post('/session/:sessionId/abandon', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { reason = 'user_abandoned' } = req.body;
 
-    console.log(`[API] Abandoning session ${sessionId}, reason: ${reason}`);
+    console.log(`Abandoning session ${sessionId}, reason: ${reason}`);
 
     await readinessChecker.markSessionAbandoned(sessionId, reason);
 
@@ -94,7 +94,7 @@ router.post('/session/:sessionId/abandon', authenticateUser, async (req, res) =>
     });
 
   } catch (error) {
-    console.error('Error abandoning session:', error);
+    console.error('Error abandoning session:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to abandon session',
@@ -144,15 +144,15 @@ router.get('/states', (req, res) => {
  * POST /readiness/check-all-active
  * Manual trigger for checking all active sessions (admin endpoint)
  */
-router.post('/check-all-active', authenticateUser, async (req, res) => {
+router.post('/check-all-active', authenticate, async (req, res) => {
   try {
     // This would typically require admin permissions
-    console.log('[API] Manual trigger: checking all active sessions');
+    console.log('Manual trigger: checking all active sessions');
 
     // Run in background
     readinessChecker.checkAllActiveSessions()
-      .then(() => console.log('[API] Background check completed'))
-      .catch(err => console.error('[API] Background check failed:', err));
+      .then(() => console.log('Background check completed'))
+      .catch(err => console.error('Background check failed:', err.message));
 
     res.status(202).json({
       success: true,
@@ -160,7 +160,7 @@ router.post('/check-all-active', authenticateUser, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error initiating active session check:', error);
+    console.error('Error initiating active session check:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to initiate session check',
@@ -173,7 +173,7 @@ router.post('/check-all-active', authenticateUser, async (req, res) => {
  * GET /readiness/session/:sessionId/next-action
  * Get the next recommended action for a session
  */
-router.get('/session/:sessionId/next-action', authenticateUser, async (req, res) => {
+router.get('/session/:sessionId/next-action', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -192,7 +192,7 @@ router.get('/session/:sessionId/next-action', authenticateUser, async (req, res)
     });
 
   } catch (error) {
-    console.error('Error getting next action:', error);
+    console.error('Error getting next action:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to get next action',
@@ -205,7 +205,7 @@ router.get('/session/:sessionId/next-action', authenticateUser, async (req, res)
  * GET /readiness/session/:sessionId/status-summary
  * Get a comprehensive status summary for the session
  */
-router.get('/session/:sessionId/status-summary', authenticateUser, async (req, res) => {
+router.get('/session/:sessionId/status-summary', authenticate, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -250,7 +250,7 @@ router.get('/session/:sessionId/status-summary', authenticateUser, async (req, r
     });
 
   } catch (error) {
-    console.error('Error getting status summary:', error);
+    console.error('Error getting status summary:', error.message);
     res.status(500).json({
       success: false,
       error: 'Failed to get status summary',

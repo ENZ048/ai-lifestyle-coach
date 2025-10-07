@@ -406,12 +406,6 @@ router.post('/session/:id/response', async (req, res) => {
     try {
       sessionReadiness = await readinessChecker.onResponseAdded(sessionId);
       console.log(`Session ${sessionId} readiness check:`, sessionReadiness);
-      
-      // Trigger automatic plan generation if session is ready and auto-trigger is enabled
-      if (sessionReadiness.readyForPlan && session.trigger_plan_when_ready) {
-        console.log(`🎯 Session ${sessionId} is ready for plan generation - triggering auto-generation`);
-        triggerAutomaticPlanGeneration(session.user_id, sessionId);
-      }
     } catch (readinessError) {
       console.error('Error checking session readiness:', readinessError);
       // Don't fail the response insertion due to readiness check errors
@@ -707,92 +701,81 @@ router.post('/session/:id/clarify', async (req, res) => {
   }
 });
 
+// Removed automatic plan generation trigger - plans are now generated on-demand only
+
 /**
- * Trigger automatic plan generation (async, non-blocking)
- * Called when a session becomes ready for plan generation
+ * @swagger
+ * /onboarding/session/{id}/generate-plan:
+ *   post:
+ *     summary: Generate and return a plan based on onboarding session
+ *     tags: [Onboarding]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Session ID
+ *     responses:
+ *       200:
+ *         description: Plan generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 plan:
+ *                   type: object
+ *                   description: The generated plan
  */
-function triggerAutomaticPlanGeneration(userId, sessionId) {
-  // Use setTimeout to make this non-blocking
-  // In production, use a proper job queue (Redis Bull, AWS SQS, etc.)
-  setTimeout(async () => {
-    try {
-      console.log(`🤖 Starting automatic plan generation for user ${userId}, session ${sessionId}`);
-      
-      // Check if user already has an active plan
-      const { data: existingPlan } = await supabaseClient
-        .from('plans')
-        .select('id, status')
-        .eq('user_id', userId)
-        .eq('status', 'active')
-        .order('generated_at', { ascending: false })
-        .limit(1)
-        .single();
+router.post('/session/:id/generate-plan', async (req, res) => {
+  try {
+    const sessionId = req.params.id;
 
-      if (existingPlan) {
-        console.log(`⚠️ User ${userId} already has an active plan (${existingPlan.id}), skipping auto-generation`);
-        return;
-      }
+    // Get session data
+    const { data: session, error: sessionError } = await supabaseClient
+      .from('onboarding_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .single();
 
-      // Gather plan generation data
-      const planData = await gatherPlanGenerationData(userId, sessionId, true);
-      if (!planData.success) {
-        console.error(`❌ Failed to gather plan data for user ${userId}:`, planData.error);
-        return;
-      }
-
-      // Generate plan with guardrails
-      const generationResult = await planGenerator.generatePlan({
-        user_id: userId,
-        session_id: sessionId,
-        required_fields_snapshot: planData.required_fields_snapshot,
-        profile_extras: planData.profile_extras,
-        user_summaries: planData.user_summaries,
-        force: false
-      });
-
-      if (!generationResult.success) {
-        console.error(`❌ Plan generation failed for user ${userId}:`, generationResult.error);
-        return;
-      }
-
-      // Save plan to database
-      const { error: saveError } = await supabaseClient
-        .from('plans')
-        .insert([generationResult.plan]);
-
-      if (saveError) {
-        console.error(`❌ Failed to save auto-generated plan for user ${userId}:`, saveError);
-        return;
-      }
-
-      // Update session status
-      await supabaseClient
-        .from('onboarding_sessions')
-        .update({
-          status: 'completed',
-          session_ended_at: new Date().toISOString(),
-          plan_generation_attempts: 1
-        })
-        .eq('id', sessionId);
-
-      // Update profile safety flags if needed
-      if (generationResult.safety_review_required) {
-        await supabaseClient
-          .from('profiles')
-          .update({ safety_review_required: true })
-          .eq('user_id', userId);
-      }
-
-      console.log(`✅ Auto-generated plan ${generationResult.plan.id} for user ${userId}`);
-      console.log(`   📊 Safety Level: ${generationResult.analysis.level}`);
-      console.log(`   🛡️ Guardrails Applied: ${generationResult.plan.guardrails_applied?.length || 0}`);
-      console.log(`   🔍 Safety Review Required: ${generationResult.safety_review_required}`);
-
-    } catch (error) {
-      console.error(`❌ Auto plan generation error for user ${userId}:`, error);
+    if (sessionError || !session) {
+      return res.status(404).json({ error: 'Session not found' });
     }
-  }, 3000); // 3-second delay to allow response to complete
-}
+
+    const userId = session.user_id;
+
+    // Gather plan generation data
+    const planData = await gatherPlanGenerationData(userId, sessionId, true);
+    if (!planData.success) {
+      return res.status(400).json({ error: planData.error });
+    }
+
+    // Generate plan
+    const generationResult = await planGenerator.generatePlan({
+      user_id: userId,
+      session_id: sessionId,
+      required_fields_snapshot: planData.required_fields_snapshot,
+      profile_extras: planData.profile_extras,
+      user_summaries: planData.user_summaries,
+      force: false
+    });
+
+    if (!generationResult.success) {
+      return res.status(500).json({ error: generationResult.error });
+    }
+
+    // Just return the plan JSON - don't save it or do anything else
+    res.json({
+      plan: generationResult.plan.plan_json
+    });
+
+  } catch (error) {
+    console.error('Error generating plan:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 /**
  * Helper function to gather plan generation data

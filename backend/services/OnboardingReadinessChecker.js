@@ -1,12 +1,12 @@
 const { supabase } = require('../lib/supabaseClient');
-const OnboardingConfigService = require('./OnboardingConfigService');
+const onboardingConfig = require('./OnboardingConfigService');
 const yaml = require('yaml');
 const fs = require('fs');
 const path = require('path');
 
 class OnboardingReadinessChecker {
   constructor() {
-    this.configService = new OnboardingConfigService();
+    this.configService = onboardingConfig;
     this.loadConfig();
   }
 
@@ -16,7 +16,7 @@ class OnboardingReadinessChecker {
       const configFile = fs.readFileSync(configPath, 'utf8');
       this.config = yaml.parse(configFile);
     } catch (error) {
-      console.error('Error loading onboarding config:', error);
+      console.error('Failed to load config:', error.message);
       // Fallback defaults
       this.config = {
         confidence_thresholds: {
@@ -53,7 +53,7 @@ class OnboardingReadinessChecker {
     const { forceCheck = false, userForced = false } = options;
     
     try {
-      console.log(`[READINESS] Checking session: ${sessionId}, force: ${userForced}`);
+      console.log(`Checking session readiness: ${sessionId}`);
       
       // Get session info
       const session = await this.getSessionInfo(sessionId);
@@ -63,7 +63,7 @@ class OnboardingReadinessChecker {
 
       // Get latest canonical responses
       const canonicalFields = await this.getCanonicalFieldsFromResponses(sessionId);
-      console.log(`[READINESS] Found ${Object.keys(canonicalFields).length} canonical fields`);
+      console.log(`Found ${Object.keys(canonicalFields).length} responses`);
 
       // Run readiness analysis
       const readinessResult = await this.analyzeReadiness(canonicalFields, userForced);
@@ -76,7 +76,7 @@ class OnboardingReadinessChecker {
       
       // Auto-trigger plan generation if ready and enabled
       if (readinessResult.ready && session.trigger_plan_when_ready && !userForced) {
-        console.log(`[READINESS] Auto-triggering plan generation for session ${sessionId}`);
+        console.log(`Auto-triggering plan generation for session ${sessionId}`);
         await this.enqueuePlanGeneration(session.user_id, sessionId);
       }
 
@@ -95,7 +95,7 @@ class OnboardingReadinessChecker {
       };
 
     } catch (error) {
-      console.error(`[READINESS] Error checking session ${sessionId}:`, error);
+      console.error(`Error checking session ${sessionId}:`, error.message);
       throw error;
     }
   }
@@ -111,7 +111,7 @@ class OnboardingReadinessChecker {
       .single();
 
     if (error) {
-      console.error('Error fetching session:', error);
+      console.error('Failed to fetch session:', error.message);
       return null;
     }
 
@@ -129,7 +129,7 @@ class OnboardingReadinessChecker {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching responses:', error);
+      console.error('Failed to fetch responses:', error.message);
       return {};
     }
 
@@ -155,7 +155,7 @@ class OnboardingReadinessChecker {
             : response.parsed_value;
           canonicalValue = parsed.value;
         } catch (e) {
-          console.warn(`Could not parse response for ${questionId}:`, e);
+          console.warn(`Could not parse response for ${questionId}`);
           canonicalValue = response.raw_answer_text;
           confidence = Math.min(confidence, 0.5);
         }
@@ -200,7 +200,7 @@ class OnboardingReadinessChecker {
     const presentFields = Object.keys(canonicalFields);
     result.missing_required_fields = requiredFields.filter(field => !presentFields.includes(field));
     
-    console.log(`[READINESS] Missing required: ${result.missing_required_fields.length}, Present: ${presentFields.length}`);
+    console.log(`Missing required: ${result.missing_required_fields.length}, Present: ${presentFields.length}`);
 
     // 2. Check confidence levels for present fields
     for (const [fieldId, fieldData] of Object.entries(canonicalFields)) {
@@ -257,7 +257,7 @@ class OnboardingReadinessChecker {
       required_fields_count: totalRequiredFields
     };
 
-    console.log(`[READINESS] Analysis complete: ready=${result.ready}, missing=${result.missing_required_fields.length}, low_conf=${result.low_confidence_fields.length}`);
+    console.log(`Analysis complete: ready=${result.ready}, missing=${result.missing_required_fields.length}, low_conf=${result.low_confidence_fields.length}`);
 
     return result;
   }
@@ -366,11 +366,11 @@ class OnboardingReadinessChecker {
       .eq('session_id', sessionId);
 
     if (error) {
-      console.error('Error updating session state:', error);
+      console.error('Failed to update session state:', error.message);
       throw error;
     }
 
-    console.log(`[READINESS] Updated session ${sessionId} to state: ${newState}`);
+    console.log(`Updated session ${sessionId} to state: ${newState}`);
   }
 
   /**
@@ -426,14 +426,14 @@ class OnboardingReadinessChecker {
   async enqueuePlanGeneration(userId, sessionId) {
     try {
       // This would integrate with your existing plan generation service
-      console.log(`[READINESS] Plan generation queued for user ${userId}, session ${sessionId}`);
+      console.log(`Plan generation queued for user ${userId}, session ${sessionId}`);
       
       // For now, just log - in production this would call the plans API
       // await planGenerationService.enqueue({ userId, sessionId, trigger: 'auto' });
       
       return { queued: true, timestamp: new Date().toISOString() };
     } catch (error) {
-      console.error('Error enqueueing plan generation:', error);
+      console.error('Failed to enqueue plan generation:', error.message);
       throw error;
     }
   }
@@ -442,7 +442,7 @@ class OnboardingReadinessChecker {
    * Event-driven readiness check (called after response insertion)
    */
   async onResponseAdded(sessionId, responseId) {
-    console.log(`[READINESS] Response added to session ${sessionId}, checking readiness`);
+    console.log(`Response added to session ${sessionId}, checking readiness`);
     
     try {
       const result = await this.checkSessionReadiness(sessionId);
@@ -452,7 +452,7 @@ class OnboardingReadinessChecker {
       
       return result;
     } catch (error) {
-      console.error(`Error in onResponseAdded for session ${sessionId}:`, error);
+      console.error(`Error in onResponseAdded for session ${sessionId}:`, error.message);
       // Don't throw - this is a background process
       return null;
     }
@@ -462,7 +462,7 @@ class OnboardingReadinessChecker {
    * Scheduled job to check all active sessions
    */
   async checkAllActiveSessions() {
-    console.log('[READINESS] Running scheduled check for all active sessions');
+    console.log('Running scheduled check for all active sessions');
     
     try {
       const { data: sessions, error } = await supabase
@@ -472,24 +472,24 @@ class OnboardingReadinessChecker {
         .lt('last_updated', new Date(Date.now() - 5 * 60 * 1000).toISOString()); // 5 minutes old
 
       if (error) {
-        console.error('Error fetching active sessions:', error);
+        console.error('Failed to fetch active sessions:', error.message);
         return;
       }
 
-      console.log(`[READINESS] Found ${sessions.length} sessions to check`);
+      console.log(`Found ${sessions.length} sessions to check`);
 
       for (const session of sessions) {
         try {
           await this.checkSessionReadiness(session.session_id, { forceCheck: true });
         } catch (error) {
-          console.error(`Error checking session ${session.session_id}:`, error);
+          console.error(`Error checking session ${session.session_id}:`, error.message);
           // Continue with other sessions
         }
       }
 
-      console.log(`[READINESS] Completed scheduled check of ${sessions.length} sessions`);
+      console.log(`Completed scheduled check of ${sessions.length} sessions`);
     } catch (error) {
-      console.error('Error in scheduled session check:', error);
+      console.error('Error in scheduled session check:', error.message);
     }
   }
 
@@ -507,11 +507,11 @@ class OnboardingReadinessChecker {
       .eq('session_id', sessionId);
 
     if (error) {
-      console.error('Error marking session as abandoned:', error);
+      console.error('Failed to mark session as abandoned:', error.message);
       throw error;
     }
 
-    console.log(`[READINESS] Marked session ${sessionId} as abandoned: ${reason}`);
+    console.log(`Marked session ${sessionId} as abandoned: ${reason}`);
   }
 }
 
